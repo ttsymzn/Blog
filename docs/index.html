@@ -3,60 +3,355 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <!-- サイト名・説明はここを書き換えてください -->
   <title>70sonan</title>
   <meta name="description" content="70sonan のブログ">
   <style>
-    html, body {
+    :root {
+      --bg: #f6f5f2;
+      --surface: #ffffff;
+      --text: #222222;
+      --muted: #6b6b6b;
+      --line: #e3e1dc;
+      --accent: #2f6f8f;
+      --radius: 12px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #17181a;
+        --surface: #222427;
+        --text: #e8e6e3;
+        --muted: #a3a09b;
+        --line: #34363a;
+        --accent: #7fb8d6;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
       margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background: #fff;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo, sans-serif;
+      line-height: 1.8;
     }
-    iframe {
-      display: block;
-      width: 100%;
-      height: 100vh;
-      height: 100dvh;
-      border: none;
+    a { color: var(--accent); }
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px 16px 64px;
     }
+    h2.heading {
+      font-size: 1rem;
+      letter-spacing: .08em;
+      color: var(--muted);
+      margin: 0 0 12px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    /* 一覧：PCは「最新記事｜月別アーカイブ」の2カラム、スマホは縦に並べる */
+    .list-view {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 300px;
+      gap: 32px;
+      align-items: start;
+    }
+    .archive-col { position: sticky; top: 16px; }
+    @media (max-width: 820px) {
+      .list-view { grid-template-columns: minmax(0, 1fr); }
+      .archive-col { position: static; }
+    }
+
+    .cards { display: grid; gap: 16px; }
+    .card {
+      display: flex;
+      gap: 16px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 16px;
+      color: inherit;
+      text-decoration: none;
+      transition: border-color .15s;
+    }
+    .card:hover { border-color: var(--accent); }
+    .card img {
+      flex: 0 0 180px;
+      width: 180px;
+      height: 120px;
+      object-fit: cover;
+      border-radius: 8px;
+      background: var(--line);
+    }
+    .card-body { min-width: 0; }
+    .card h3 { margin: 0 0 4px; font-size: 1.1rem; line-height: 1.5; }
+    .card p { margin: 0; color: var(--muted); font-size: .9rem; }
+    .date { color: var(--muted); font-size: .85rem; }
+    @media (max-width: 560px) {
+      .card { flex-direction: column; padding: 12px; }
+      .card img { flex-basis: auto; width: 100%; height: auto; aspect-ratio: 16 / 9; }
+    }
+
+    .archive details {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+    .archive summary {
+      cursor: pointer;
+      padding: 8px 12px;
+      font-weight: 600;
+    }
+    .archive summary span { color: var(--muted); font-weight: 400; }
+    .archive ul { list-style: none; margin: 0; padding: 0 12px 8px; }
+    .archive li { padding: 4px 0; border-top: 1px dashed var(--line); font-size: .92rem; }
+    .archive li .date { margin-right: .5em; }
+
+    /* 記事ページ */
+    .post {
+      max-width: 760px;
+      margin: 0 auto;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 24px;
+    }
+    @media (max-width: 560px) { .post { padding: 16px; } }
+    .post h1 { font-size: 1.5rem; line-height: 1.4; margin: 4px 0 20px; }
+    .post-body { overflow-wrap: anywhere; }
+    .post-body img, .post-body video { max-width: 100%; height: auto; }
+    .post-body iframe { max-width: 100%; }
+    .post-body table { display: block; max-width: 100%; overflow-x: auto; }
+    .post-body pre { overflow-x: auto; }
+    .post-body .separator a { margin: 0 !important; }
+    .post-nav { display: flex; justify-content: space-between; gap: 12px; margin-top: 24px; font-size: .9rem; }
+    .back { display: inline-block; margin-bottom: 16px; }
+
+    .status { text-align: center; color: var(--muted); padding: 48px 0; }
+    [hidden] { display: none !important; }
   </style>
 </head>
 <body>
-  <!-- 埋め込む Blogger（Googleブログ）のURLを src に設定してください -->
-  <iframe
-    id="blog"
-    title="70sonan"
-    allow="fullscreen"
-    allowfullscreen></iframe>
+  <div class="wrap">
+    <p id="status" class="status">読み込み中…</p>
+
+    <div id="list-view" class="list-view" hidden>
+      <section>
+        <h2 class="heading">最新の記事</h2>
+        <div id="latest" class="cards"></div>
+      </section>
+      <aside class="archive-col">
+        <h2 class="heading">過去の記事</h2>
+        <div id="archive" class="archive"></div>
+      </aside>
+    </div>
+
+    <div id="post-view" hidden>
+      <div class="post">
+        <a href="#" class="back">← 記事一覧へ</a>
+        <div id="post-date" class="date"></div>
+        <h1 id="post-title"></h1>
+        <div id="post-body" class="post-body"></div>
+        <div class="post-nav">
+          <a id="post-original" href="#" target="_blank" rel="noopener">Bloggerで見る・コメントする</a>
+          <a href="#">記事一覧へ</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <noscript>
+    <p class="status"><a href="https://70sonan.blogspot.com/">ブログを開く</a></p>
+  </noscript>
+
   <script>
-    // Blogger は ?m=1 でスマホ用、?m=0 でPC用の表示になる。
-    // 画面幅（横向きのスマホも含む）に合わせて切り替え、境目をまたいだときだけ読み込み直す。
     (function () {
-      var BLOG_URL = 'https://70sonan.blogspot.com/';
-      var frame = document.getElementById('blog');
-      var mobile = window.matchMedia('(max-width: 768px), (pointer: coarse) and (max-width: 1024px)');
-      var current = null;
+      // 表示するブログと、トップに並べる最新記事の数
+      var BLOG_URL = 'https://70sonan.blogspot.com';
+      var LATEST_COUNT = 5;
+      var PAGE_SIZE = 150;
 
-      function load() {
-        var isMobile = mobile.matches;
-        if (isMobile === current) return;
-        current = isMobile;
-        frame.src = BLOG_URL + (isMobile ? '?m=1' : '?m=0');
+      var posts = [];
+      var byId = {};
+      var byUrl = {};
+      var listScrollY = 0;
+
+      var $ = function (id) { return document.getElementById(id); };
+
+      // Blogger のフィードは JSONP で読み込む（別ドメインでも取得できる）
+      function fetchPage(startIndex) {
+        return new Promise(function (resolve, reject) {
+          var cb = '__blogFeed' + startIndex + '_' + Date.now();
+          var script = document.createElement('script');
+          var timer = setTimeout(function () { cleanup(); reject(new Error('timeout')); }, 15000);
+          function cleanup() {
+            clearTimeout(timer);
+            delete window[cb];
+            script.remove();
+          }
+          window[cb] = function (data) { cleanup(); resolve(data.feed.entry || []); };
+          script.onerror = function () { cleanup(); reject(new Error('load error')); };
+          script.src = BLOG_URL + '/feeds/posts/default?alt=json-in-script' +
+            '&start-index=' + startIndex + '&max-results=' + PAGE_SIZE + '&callback=' + cb;
+          document.head.appendChild(script);
+        });
       }
 
-      load();
-      if (mobile.addEventListener) {
-        mobile.addEventListener('change', load);
-      } else {
-        mobile.addListener(load);
+      function fetchAll(startIndex, acc) {
+        return fetchPage(startIndex).then(function (entries) {
+          acc = acc.concat(entries);
+          return entries.length < PAGE_SIZE ? acc : fetchAll(startIndex + PAGE_SIZE, acc);
+        });
       }
+
+      function toPost(entry) {
+        var html = (entry.content || entry.summary || {}).$t || '';
+        var doc = new DOMParser().parseFromString(html, 'text/html');
+        var alt = (entry.link || []).filter(function (l) { return l.rel === 'alternate'; })[0];
+        var thumb = entry.media$thumbnail && entry.media$thumbnail.url;
+        if (!thumb) {
+          var img = doc.querySelector('img');
+          thumb = img && img.getAttribute('src');
+        }
+        if (thumb) {
+          // Blogger のサムネイルは 72px なので大きいサイズに差し替える
+          thumb = thumb.replace(/\/s72(-[a-z]+)*\//, '/w640-h360-c/').replace(/=s72(-[a-z]+)*$/, '=w640-h360-c');
+        }
+        var text = (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
+        return {
+          id: entry.id.$t.split('post-').pop(),
+          title: (entry.title && entry.title.$t) || '（無題）',
+          published: entry.published.$t,
+          html: html,
+          excerpt: text.length > 100 ? text.slice(0, 100) + '…' : text,
+          thumb: thumb || '',
+          url: alt ? alt.href : BLOG_URL
+        };
+      }
+
+      function formatDate(iso) {
+        return iso.slice(0, 4) + '年' + Number(iso.slice(5, 7)) + '月' + Number(iso.slice(8, 10)) + '日';
+      }
+
+      function el(tag, props, children) {
+        var node = document.createElement(tag);
+        Object.keys(props || {}).forEach(function (k) { node[k] = props[k]; });
+        (children || []).forEach(function (c) { if (c) node.appendChild(c); });
+        return node;
+      }
+
+      function renderList() {
+        var latest = $('latest');
+        latest.textContent = '';
+        posts.slice(0, LATEST_COUNT).forEach(function (p) {
+          var img = p.thumb ? el('img', { src: p.thumb, alt: '', loading: 'lazy' }) : null;
+          latest.appendChild(el('a', { className: 'card', href: '#post-' + p.id }, [
+            img,
+            el('div', { className: 'card-body' }, [
+              el('div', { className: 'date', textContent: formatDate(p.published) }),
+              el('h3', { textContent: p.title }),
+              el('p', { textContent: p.excerpt })
+            ])
+          ]));
+        });
+
+        // 6件目以降を月ごとにまとめる
+        var archive = $('archive');
+        archive.textContent = '';
+        var months = [];
+        var groups = {};
+        posts.slice(LATEST_COUNT).forEach(function (p) {
+          var key = p.published.slice(0, 7);
+          if (!groups[key]) { groups[key] = []; months.push(key); }
+          groups[key].push(p);
+        });
+        if (!months.length) {
+          archive.appendChild(el('p', { className: 'date', textContent: 'まだありません' }));
+        }
+        months.forEach(function (key) {
+          var label = key.slice(0, 4) + '年' + Number(key.slice(5, 7)) + '月';
+          var items = groups[key].map(function (p) {
+            return el('li', {}, [
+              el('span', { className: 'date', textContent: Number(p.published.slice(8, 10)) + '日' }),
+              el('a', { href: '#post-' + p.id, textContent: p.title })
+            ]);
+          });
+          archive.appendChild(el('details', {}, [
+            el('summary', {}, [
+              document.createTextNode(label + ' '),
+              el('span', { textContent: '(' + items.length + ')' })
+            ]),
+            el('ul', {}, items)
+          ]));
+        });
+      }
+
+      function showPost(p) {
+        $('post-date').textContent = formatDate(p.published);
+        $('post-title').textContent = p.title;
+        $('post-body').innerHTML = p.html;
+        $('post-original').href = p.url;
+        document.title = p.title;
+        $('list-view').hidden = true;
+        $('post-view').hidden = false;
+        window.scrollTo(0, 0);
+      }
+
+      function showList() {
+        document.title = '70sonan';
+        $('post-view').hidden = true;
+        $('list-view').hidden = false;
+        window.scrollTo(0, listScrollY);
+      }
+
+      function route() {
+        var m = location.hash.match(/^#post-(\d+)$/);
+        if (m && byId[m[1]]) {
+          showPost(byId[m[1]]);
+        } else {
+          showList();
+        }
+      }
+
+      // 一覧から記事を開く前にスクロール位置を覚えておく
+      document.addEventListener('click', function (e) {
+        var a = e.target.closest && e.target.closest('a');
+        if (!a) return;
+        if (!$('list-view').hidden && /^#post-/.test(a.getAttribute('href') || '')) {
+          listScrollY = window.scrollY;
+        }
+        // 記事の中にある同じブログの記事へのリンクは、このページ内で開く
+        var target = byUrl[a.href.split(/[?#]/)[0]];
+        if (target && a.closest('#post-body')) {
+          e.preventDefault();
+          location.hash = '#post-' + target.id;
+        }
+      });
+      window.addEventListener('hashchange', route);
+
+      fetchAll(1, []).then(function (entries) {
+        posts = entries.map(toPost).sort(function (a, b) {
+          return a.published < b.published ? 1 : -1;
+        });
+        posts.forEach(function (p) {
+          byId[p.id] = p;
+          byUrl[p.url.split(/[?#]/)[0]] = p;
+        });
+        $('status').hidden = true;
+        if (!posts.length) {
+          $('status').hidden = false;
+          $('status').textContent = 'まだ記事がありません';
+          return;
+        }
+        renderList();
+        route();
+      }).catch(function () {
+        var status = $('status');
+        status.textContent = '記事を読み込めませんでした。';
+        status.appendChild(el('a', { href: BLOG_URL, textContent: 'ブログを直接開く' }));
+      });
     })();
   </script>
-  <noscript>
-    <p><a href="https://70sonan.blogspot.com/">ブログを開く</a></p>
-  </noscript>
 </body>
 </html>
