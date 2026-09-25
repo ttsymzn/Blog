@@ -64,6 +64,7 @@
 
     .cards { display: grid; gap: 16px; }
     .card {
+      position: relative;
       display: flex;
       gap: 16px;
       background: var(--surface);
@@ -85,7 +86,26 @@
     }
     .card-body { min-width: 0; }
     .card h3 { margin: 0 0 4px; font-size: 1.1rem; line-height: 1.5; }
-    .card p { margin: 0; color: var(--muted); font-size: .9rem; }
+    .card h3 a { color: inherit; text-decoration: none; }
+    /* タイトルのリンクをカード全体に広げて、どこを押しても記事が開くようにする */
+    .card h3 a::after { content: ""; position: absolute; inset: 0; }
+    .card .excerpt {
+      margin: 0;
+      color: var(--muted);
+      font-size: .9rem;
+      white-space: pre-line;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 3;
+      overflow: hidden;
+    }
+    .card .more {
+      position: relative;
+      z-index: 1;
+      display: inline-block;
+      margin-top: 4px;
+      font-size: .9rem;
+    }
     .date { color: var(--muted); font-size: .85rem; }
     @media (max-width: 560px) {
       .card { flex-direction: column; padding: 12px; }
@@ -170,6 +190,7 @@
       // 表示するブログと、トップに並べる最新記事の数
       var BLOG_URL = 'https://70sonan.blogspot.com';
       var LATEST_COUNT = 5;
+      var PREVIEW_LINES = 3;
       var PAGE_SIZE = 150;
 
       var posts = [];
@@ -218,16 +239,28 @@
           // Blogger のサムネイルは 72px なので大きいサイズに差し替える
           thumb = thumb.replace(/\/s72(-[a-z]+)*\//, '/w640-h360-c/').replace(/=s72(-[a-z]+)*$/, '=w640-h360-c');
         }
-        var text = (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
         return {
           id: entry.id.$t.split('post-').pop(),
           title: (entry.title && entry.title.$t) || '（無題）',
           published: entry.published.$t,
           html: html,
-          excerpt: text.length > 100 ? text.slice(0, 100) + '…' : text,
+          lines: toLines(doc),
           thumb: thumb || '',
           url: alt ? alt.href : BLOG_URL
         };
+      }
+
+      // 本文を改行を保ったまま行ごとのテキストにする（空行は除く）
+      function toLines(doc) {
+        var body = doc.body;
+        body.querySelectorAll('script, style').forEach(function (n) { n.remove(); });
+        body.querySelectorAll('br').forEach(function (br) { br.replaceWith('\n'); });
+        body.querySelectorAll('p, div, li, h1, h2, h3, h4, h5, h6, blockquote, tr').forEach(function (n) {
+          n.appendChild(doc.createTextNode('\n'));
+        });
+        return (body.textContent || '').split('\n').map(function (line) {
+          return line.replace(/\s+/g, ' ').trim();
+        }).filter(Boolean);
       }
 
       function formatDate(iso) {
@@ -246,12 +279,15 @@
         latest.textContent = '';
         posts.slice(0, LATEST_COUNT).forEach(function (p) {
           var img = p.thumb ? el('img', { src: p.thumb, alt: '', loading: 'lazy' }) : null;
-          latest.appendChild(el('a', { className: 'card', href: '#post-' + p.id }, [
+          var more = el('a', { className: 'more', href: '#post-' + p.id, textContent: '続きはこちら' });
+          more.dataset.hasMoreLines = p.lines.length > PREVIEW_LINES ? '1' : '';
+          latest.appendChild(el('article', { className: 'card' }, [
             img,
             el('div', { className: 'card-body' }, [
               el('div', { className: 'date', textContent: formatDate(p.published) }),
-              el('h3', { textContent: p.title }),
-              el('p', { textContent: p.excerpt })
+              el('h3', {}, [el('a', { href: '#post-' + p.id, textContent: p.title })]),
+              el('p', { className: 'excerpt', textContent: p.lines.slice(0, PREVIEW_LINES).join('\n') }),
+              more
             ])
           ]));
         });
@@ -287,6 +323,15 @@
         });
       }
 
+      // 3行を超える記事（1行が長くて折り返しで3行を超える場合も）に「続きはこちら」を出す
+      function updateMoreLinks() {
+        document.querySelectorAll('#latest .card').forEach(function (card) {
+          var excerpt = card.querySelector('.excerpt');
+          var more = card.querySelector('.more');
+          more.hidden = !(more.dataset.hasMoreLines || excerpt.scrollHeight > excerpt.clientHeight + 1);
+        });
+      }
+
       function showPost(p) {
         $('post-date').textContent = formatDate(p.published);
         $('post-title').textContent = p.title;
@@ -302,6 +347,7 @@
         document.title = '70sonan';
         $('post-view').hidden = true;
         $('list-view').hidden = false;
+        updateMoreLinks();
         window.scrollTo(0, listScrollY);
       }
 
@@ -329,6 +375,9 @@
         }
       });
       window.addEventListener('hashchange', route);
+      window.addEventListener('resize', function () {
+        if (!$('list-view').hidden) updateMoreLinks();
+      });
 
       fetchAll(1, []).then(function (entries) {
         posts = entries.map(toPost).sort(function (a, b) {
