@@ -27,10 +27,34 @@
 <body>
   <!-- 埋め込む Blogger（Googleブログ）のURLを src に設定してください -->
   <iframe
-    src="https://70sonan.blogspot.com/"
+    id="blog"
     title="70sonan"
     allow="fullscreen"
     allowfullscreen></iframe>
+  <script>
+    // Blogger は ?m=1 でスマホ用、?m=0 でPC用の表示になる。
+    // 画面幅（横向きのスマホも含む）に合わせて切り替え、境目をまたいだときだけ読み込み直す。
+    (function () {
+      var BLOG_URL = 'https://70sonan.blogspot.com/';
+      var frame = document.getElementById('blog');
+      var mobile = window.matchMedia('(max-width: 768px), (pointer: coarse) and (max-width: 1024px)');
+      var current = null;
+
+      function load() {
+        var isMobile = mobile.matches;
+        if (isMobile === current) return;
+        current = isMobile;
+        frame.src = BLOG_URL + (isMobile ? '?m=1' : '?m=0');
+      }
+
+      load();
+      if (mobile.addEventListener) {
+        mobile.addEventListener('change', load);
+      } else {
+        mobile.addListener(load);
+      }
+    })();
+  </script>
   <noscript>
     <p><a href="https://70sonan.blogspot.com/">ブログを開く</a></p>
   </noscript>
