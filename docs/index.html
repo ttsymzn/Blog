@@ -311,6 +311,8 @@
           id: entry.id.$t.split('post-').pop(),
           title: (entry.title && entry.title.$t) || '（無題）',
           published: entry.published.$t,
+          time: Date.parse(entry.published.$t),
+          jst: toJstDate(entry.published.$t),
           html: html,
           lines: toLines(doc),
           thumb: thumb || '',
@@ -331,8 +333,13 @@
         }).filter(Boolean);
       }
 
-      function formatDate(iso) {
-        return iso.slice(0, 4) + '年' + Number(iso.slice(5, 7)) + '月' + Number(iso.slice(8, 10)) + '日';
+      // Blogger のフィードの日時は太平洋時間（-07:00 など）なので、日本時間の日付（YYYY-MM-DD）に直す
+      function toJstDate(iso) {
+        return new Date(Date.parse(iso) + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      }
+
+      function formatDate(ymd) {
+        return ymd.slice(0, 4) + '年' + Number(ymd.slice(5, 7)) + '月' + Number(ymd.slice(8, 10)) + '日';
       }
 
       function el(tag, props, children) {
@@ -352,7 +359,7 @@
           latest.appendChild(el('article', { className: 'card' }, [
             img,
             el('div', { className: 'card-body' }, [
-              el('div', { className: 'date', textContent: formatDate(p.published) }),
+              el('div', { className: 'date', textContent: formatDate(p.jst) }),
               el('h3', {}, [el('a', { href: '#post-' + p.id, textContent: p.title })]),
               el('p', { className: 'excerpt', textContent: p.lines.slice(0, PREVIEW_LINES).join('\n') }),
               more
@@ -366,7 +373,7 @@
         var months = [];
         var groups = {};
         posts.slice(LATEST_COUNT).forEach(function (p) {
-          var key = p.published.slice(0, 7);
+          var key = p.jst.slice(0, 7);
           if (!groups[key]) { groups[key] = []; months.push(key); }
           groups[key].push(p);
         });
@@ -377,7 +384,7 @@
           var label = key.slice(0, 4) + '年' + Number(key.slice(5, 7)) + '月';
           var items = groups[key].map(function (p) {
             return el('li', {}, [
-              el('span', { className: 'date', textContent: Number(p.published.slice(8, 10)) + '日' }),
+              el('span', { className: 'date', textContent: Number(p.jst.slice(8, 10)) + '日' }),
               el('a', { href: '#post-' + p.id, textContent: p.title })
             ]);
           });
@@ -401,7 +408,7 @@
       }
 
       function showPost(p) {
-        $('post-date').textContent = formatDate(p.published);
+        $('post-date').textContent = formatDate(p.jst);
         $('post-title').textContent = p.title;
         $('post-body').innerHTML = p.html;
         $('post-original').href = p.url;
@@ -449,7 +456,7 @@
 
       fetchAll(1, []).then(function (entries) {
         posts = entries.map(toPost).sort(function (a, b) {
-          return a.published < b.published ? 1 : -1;
+          return b.time - a.time;
         });
         posts.forEach(function (p) {
           byId[p.id] = p;
