@@ -189,6 +189,28 @@
     .post-nav { display: flex; justify-content: space-between; gap: 12px; margin-top: 24px; font-size: .9rem; }
     .back { display: inline-block; margin-bottom: 16px; }
 
+    /* 記事の写真をクリックしたときに、ページの上に大きく表示する */
+    .lightbox {
+      position: fixed; inset: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: center;
+      padding: 56px 16px 16px;
+      background: rgba(0, 0, 0, .88);
+    }
+    .lightbox[hidden] { display: none; }
+    .lightbox img {
+      max-width: 100%; max-height: 100%;
+      object-fit: contain; box-shadow: 0 4px 24px rgba(0, 0, 0, .5);
+    }
+    .lightbox-close {
+      position: absolute; top: 8px; right: 8px;
+      width: 44px; height: 44px; padding: 0;
+      border: 0; border-radius: 50%;
+      background: rgba(255, 255, 255, .15); color: #fff;
+      font-size: 28px; line-height: 44px; cursor: pointer;
+    }
+    .lightbox-close:hover, .lightbox-close:focus-visible { background: rgba(255, 255, 255, .3); }
+    body.lightbox-open { overflow: hidden; }
+
     .site-header {
       display: flex;
       flex-wrap: wrap;
@@ -246,6 +268,11 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <div id="lightbox" class="lightbox" role="dialog" aria-modal="true" aria-label="写真の拡大表示" hidden>
+    <button type="button" id="lightbox-close" class="lightbox-close" aria-label="閉じる">&times;</button>
+    <img id="lightbox-img" alt="">
   </div>
 
   <noscript>
@@ -471,10 +498,60 @@
         }
       }
 
+      // 記事の写真は別ページで開かず、このページの上に大きく表示する
+      var lightboxOpener = null;
+
+      function isImageLink(a) {
+        return a.closest('#post-body') && a.querySelector('img') &&
+          /(googleusercontent\.com|bp\.blogspot\.com)\/|\.(jpe?g|png|gif|webp)([?#]|$)/i.test(a.href);
+      }
+
+      function openLightbox(a) {
+        var thumb = a.querySelector('img');
+        $('lightbox-img').src = a.href;
+        $('lightbox-img').alt = thumb.alt || '';
+        $('lightbox').hidden = false;
+        document.body.classList.add('lightbox-open');
+        lightboxOpener = a;
+        // スマホの「戻る」でも写真だけ閉じられるよう、履歴を1つ積んでおく
+        history.pushState({ lightbox: true }, '');
+        $('lightbox-close').focus();
+      }
+
+      function hideLightbox() {
+        if ($('lightbox').hidden) return;
+        $('lightbox').hidden = true;
+        $('lightbox-img').removeAttribute('src');
+        document.body.classList.remove('lightbox-open');
+        if (lightboxOpener) lightboxOpener.focus({ preventScroll: true });
+        lightboxOpener = null;
+      }
+
+      // ×・背景・Esc で閉じるときは、開いたときに積んだ履歴を戻す（popstate で閉じる）
+      function closeLightbox() {
+        if ($('lightbox').hidden) return;
+        if (history.state && history.state.lightbox) history.back();
+        else hideLightbox();
+      }
+
+      $('lightbox-close').addEventListener('click', closeLightbox);
+      $('lightbox').addEventListener('click', function (e) {
+        if (e.target === $('lightbox')) closeLightbox();
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') closeLightbox();
+      });
+      window.addEventListener('popstate', hideLightbox);
+
       // 一覧から記事を開く前にスクロール位置を覚えておく
       document.addEventListener('click', function (e) {
         var a = e.target.closest && e.target.closest('a');
         if (!a) return;
+        if (isImageLink(a) && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.button === 0) {
+          e.preventDefault();
+          openLightbox(a);
+          return;
+        }
         if (!$('list-view').hidden && /^#post-/.test(a.getAttribute('href') || '')) {
           listScrollY = window.scrollY;
         }
@@ -485,7 +562,10 @@
           location.hash = '#post-' + target.id;
         }
       });
-      window.addEventListener('hashchange', route);
+      window.addEventListener('hashchange', function () {
+        hideLightbox();
+        route();
+      });
       window.addEventListener('resize', function () {
         if (!$('list-view').hidden) updateMoreLinks();
       });
