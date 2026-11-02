@@ -269,9 +269,10 @@
       var $ = function (id) { return document.getElementById(id); };
 
       // Blogger のフィードは JSONP で読み込む（別ドメインでも取得できる）
-      function fetchPage(startIndex) {
+      var jsonpCount = 0;
+      function jsonp(path, params) {
         return new Promise(function (resolve, reject) {
-          var cb = '__blogFeed' + startIndex + '_' + Date.now();
+          var cb = '__blogFeed' + (jsonpCount++) + '_' + Date.now();
           var script = document.createElement('script');
           var timer = setTimeout(function () { cleanup(); reject(new Error('timeout')); }, 15000);
           function cleanup() {
@@ -279,30 +280,39 @@
             delete window[cb];
             script.remove();
           }
-          window[cb] = function (data) { cleanup(); resolve(data.feed.entry || []); };
+          window[cb] = function (data) { cleanup(); resolve(data); };
           script.onerror = function () { cleanup(); reject(new Error('load error')); };
-          script.src = BLOG_URL + '/feeds/posts/default?alt=json-in-script' +
-            '&start-index=' + startIndex + '&max-results=' + PAGE_SIZE + '&callback=' + cb;
+          script.src = BLOG_URL + path + '?alt=json-in-script' + (params || '') + '&callback=' + cb;
           document.head.appendChild(script);
         });
       }
 
-      function fetchAll(startIndex, acc) {
-        return fetchPage(startIndex).then(function (entries) {
+      // 一覧用：本文を含まない要約フィードで全記事を集める（データが軽い）
+      function fetchAllSummaries(startIndex, acc) {
+        return jsonp('/feeds/posts/summary', '&start-index=' + startIndex + '&max-results=' + PAGE_SIZE).then(function (data) {
+          var entries = data.feed.entry || [];
           acc = acc.concat(entries);
-          return entries.length < PAGE_SIZE ? acc : fetchAll(startIndex + PAGE_SIZE, acc);
+          return entries.length < PAGE_SIZE ? acc : fetchAllSummaries(startIndex + PAGE_SIZE, acc);
+        });
+      }
+
+      // トップのカード用：最新記事だけ本文ごと取得する
+      function fetchLatestFull() {
+        return jsonp('/feeds/posts/default', '&max-results=' + LATEST_COUNT).then(function (data) {
+          return data.feed.entry || [];
+        });
+      }
+
+      // 記事を開いたとき：その1件だけ本文を取得する
+      function fetchPostBody(id) {
+        return jsonp('/feeds/posts/default/' + id).then(function (data) {
+          return data.entry;
         });
       }
 
       function toPost(entry) {
-        var html = (entry.content || entry.summary || {}).$t || '';
-        var doc = new DOMParser().parseFromString(html, 'text/html');
         var alt = (entry.link || []).filter(function (l) { return l.rel === 'alternate'; })[0];
         var thumb = entry.media$thumbnail && entry.media$thumbnail.url;
-        if (!thumb) {
-          var img = doc.querySelector('img');
-          thumb = img && img.getAttribute('src');
-        }
         if (thumb) {
           // Blogger のサムネイルは 72px なので大きいサイズに差し替える
           thumb = thumb.replace(/\/s72(-[a-z]+)*\//, '/w640-h360-c/').replace(/=s72(-[a-z]+)*$/, '=w640-h360-c');
@@ -313,11 +323,24 @@
           published: entry.published.$t,
           time: Date.parse(entry.published.$t),
           jst: toJstDate(entry.published.$t),
-          html: html,
-          lines: toLines(doc),
+          html: null,
+          lines: [((entry.summary || {}).$t || '').replace(/\s+/g, ' ').trim()].filter(Boolean),
           thumb: thumb || '',
           url: alt ? alt.href : BLOG_URL
         };
+      }
+
+      // 本文を含むエントリーから本文・行ごとのテキスト・サムネイルを記事に入れる
+      function setBody(p, entry) {
+        var html = (entry.content || entry.summary || {}).$t || '';
+        var doc = new DOMParser().parseFromString(html, 'text/html');
+        if (!p.thumb) {
+          var img = doc.querySelector('img');
+          var src = img && img.getAttribute('src');
+          if (src) p.thumb = src.replace(/\/s72(-[a-z]+)*\//, '/w640-h360-c/').replace(/=s72(-[a-z]+)*$/, '=w640-h360-c');
+        }
+        p.html = html;
+        p.lines = toLines(doc);
       }
 
       // 本文を改行を保ったまま行ごとのテキストにする（空行は除く）
@@ -410,8 +433,21 @@
       function showPost(p) {
         $('post-date').textContent = formatDate(p.jst);
         $('post-title').textContent = p.title;
-        $('post-body').innerHTML = p.html;
         $('post-original').href = p.url;
+        if (p.html !== null) {
+          $('post-body').innerHTML = p.html;
+        } else {
+          // 本文はまだ取得していないので、この記事の分だけ取りに行く
+          $('post-body').textContent = '読み込み中…';
+          fetchPostBody(p.id).then(function (entry) {
+            setBody(p, entry);
+            if (location.hash === '#post-' + p.id) $('post-body').innerHTML = p.html;
+          }).catch(function () {
+            if (location.hash !== '#post-' + p.id) return;
+            $('post-body').textContent = '本文を読み込めませんでした。';
+            $('post-body').appendChild(el('a', { href: p.url, textContent: 'Bloggerで見る' }));
+          });
+        }
         document.title = p.title + '｜蘇南高校 校長ブログ';
         $('list-view').hidden = true;
         $('post-view').hidden = false;
@@ -454,12 +490,22 @@
         if (!$('list-view').hidden) updateMoreLinks();
       });
 
-      fetchAll(1, []).then(function (entries) {
-        posts = entries.map(toPost).sort(function (a, b) {
+      Promise.all([fetchAllSummaries(1, []), fetchLatestFull()]).then(function (results) {
+        // 2つのフィードを取る間に投稿があっても漏れないよう、両方の記事をまとめる
+        results[0].concat(results[1]).forEach(function (entry) {
+          var p = toPost(entry);
+          if (!byId[p.id]) {
+            byId[p.id] = p;
+            posts.push(p);
+          }
+        });
+        results[1].forEach(function (entry) {
+          setBody(byId[entry.id.$t.split('post-').pop()], entry);
+        });
+        posts.sort(function (a, b) {
           return b.time - a.time;
         });
         posts.forEach(function (p) {
-          byId[p.id] = p;
           byUrl[p.url.split(/[?#]/)[0]] = p;
         });
         $('status').hidden = true;
